@@ -1,4 +1,4 @@
-name: Build IronLock APK
+name: Build IronLock Cute APK
 
 on:
   push:
@@ -12,10 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate Complete Android Project
+      - name: Generate Cute Android Project
         run: |
           mkdir -p app/src/main/java/com/ironlock/blocker
           mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/drawable
 
           cat << 'EOF' > settings.gradle
           pluginManagement {
@@ -47,8 +48,8 @@ jobs:
                   applicationId "com.ironlock.blocker"
                   minSdk 24
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode 2
+                  versionName "2.0-Cute"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -57,13 +58,39 @@ jobs:
           }
           EOF
 
+          cat << 'EOF' > app/src/main/res/drawable/ic_launcher.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#FFB6C1"
+                  android:pathData="M0,0h108v108h-108z"/>
+              <path
+                  android:fillColor="#FFF0F5"
+                  android:pathData="M26,42 L34,22 L48,36 L60,36 L74,22 L82,42 A28,26 0 1,1 26,42 Z"/>
+              <path
+                  android:fillColor="#5D4037"
+                  android:pathData="M42,52a3.5,3.5 0 1,0 0.1,0z M66,52a3.5,3.5 0 1,0 0.1,0z"/>
+              <path
+                  android:fillColor="#FF6F91"
+                  android:pathData="M54,57 L50,62 L58,62 Z"/>
+              <path
+                  android:fillColor="#FF8DA1"
+                  android:pathData="M35,58a4.5,2.8 0 1,0 0.1,0z M73,58a4.5,2.8 0 1,0 0.1,0z"/>
+          </vector>
+          EOF
+
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
               <application
-                  android:label="IronLock"
-                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  android:label="CozyLock 🌸"
+                  android:icon="@drawable/ic_launcher"
+                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -105,9 +132,17 @@ jobs:
           import android.view.accessibility.AccessibilityEvent;
           import android.widget.Toast;
           import java.util.HashSet;
+          import java.util.Random;
           import java.util.Set;
 
           public class LockService extends AccessibilityService {
+              private final String[] cuteWarnings = {
+                  "🌸 No peeking! Stay focused, you got this! ( •̀ ω •́ )✧",
+                  "🍓 Hey! Back to work! Your buddy is watching! ( ˘ ³˘)♥",
+                  "✨ Stay strong! Only a little bit left! (ง •̀_•́)ง",
+                  "🐾 Paws off that app! Focus time is active! 🌸"
+              };
+
               @Override
               public void onAccessibilityEvent(AccessibilityEvent event) {
                   if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -122,7 +157,8 @@ jobs:
                           if (blocked.contains(pkg) || pkg.equals("com.android.settings")) {
                               performGlobalAction(GLOBAL_ACTION_HOME);
                               long minsLeft = ((endTime - System.currentTimeMillis()) / 60000) + 1;
-                              Toast.makeText(this, "IRONLOCK ACTIVE: " + minsLeft + " min remaining!", Toast.LENGTH_SHORT).show();
+                              String msg = cuteWarnings[new Random().nextInt(cuteWarnings.length)];
+                              Toast.makeText(this, msg + " (" + minsLeft + "m left!)", Toast.LENGTH_SHORT).show();
                           }
                       }
                   }
@@ -142,11 +178,14 @@ jobs:
           import android.content.pm.PackageManager;
           import android.content.pm.ResolveInfo;
           import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
           import android.os.Bundle;
           import android.os.CountDownTimer;
           import android.provider.Settings;
           import android.text.InputType;
           import android.view.Gravity;
+          import android.view.ViewGroup;
           import android.widget.*;
           import java.util.*;
 
@@ -155,9 +194,19 @@ jobs:
               private Set<String> selectedApps = new HashSet<>();
               private Button lockBtn, permBtn;
               private EditText timeInput;
-              private TextView statusText;
+              private TextView mascotText, statusText, subStatusText;
               private List<CheckBox> checkBoxes = new ArrayList<>();
               private CountDownTimer timer;
+
+              private GradientDrawable makeRoundedCard(String hexColor, int radius, String strokeHex, int strokeWidth) {
+                  GradientDrawable gd = new GradientDrawable();
+                  gd.setColor(Color.parseColor(hexColor));
+                  gd.setCornerRadius(radius);
+                  if (strokeHex != null) {
+                      gd.setStroke(strokeWidth, Color.parseColor(strokeHex));
+                  }
+                  return gd;
+              }
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -167,42 +216,103 @@ jobs:
 
                   LinearLayout root = new LinearLayout(this);
                   root.setOrientation(LinearLayout.VERTICAL);
-                  root.setPadding(40, 60, 40, 40);
-                  root.setBackgroundColor(Color.parseColor("#121212"));
+                  root.setPadding(45, 70, 45, 40);
+                  root.setBackgroundColor(Color.parseColor("#FFF5F7"));
+
+                  // Cute Top Mascot Card
+                  LinearLayout headerCard = new LinearLayout(this);
+                  headerCard.setOrientation(LinearLayout.VERTICAL);
+                  headerCard.setPadding(40, 45, 40, 45);
+                  headerCard.setGravity(Gravity.CENTER);
+                  headerCard.setBackground(makeRoundedCard("#FFE4EC", 55, "#FFB6C1", 4));
+
+                  mascotText = new TextView(this);
+                  mascotText.setText("( ◕ ‿ ◕ ) 🌸");
+                  mascotText.setTextSize(32);
+                  mascotText.setTextColor(Color.parseColor("#D81B60"));
+                  mascotText.setGravity(Gravity.CENTER);
+                  headerCard.addView(mascotText);
 
                   statusText = new TextView(this);
-                  statusText.setText("IRONLOCK");
-                  statusText.setTextSize(26);
-                  statusText.setTextColor(Color.parseColor("#00E5FF"));
+                  statusText.setText("Cozy Focus Time!");
+                  statusText.setTextSize(22);
+                  statusText.setTypeface(Typeface.SERIF, Typeface.BOLD);
+                  statusText.setTextColor(Color.parseColor("#880E4F"));
                   statusText.setGravity(Gravity.CENTER);
-                  root.addView(statusText);
+                  statusText.setPadding(0, 12, 0, 4);
+                  headerCard.addView(statusText);
 
+                  subStatusText = new TextView(this);
+                  subStatusText.setText("Pick your distractions & let's lock in ✨");
+                  subStatusText.setTextSize(13);
+                  subStatusText.setTextColor(Color.parseColor("#AD1457"));
+                  subStatusText.setGravity(Gravity.CENTER);
+                  headerCard.addView(subStatusText);
+
+                  root.addView(headerCard);
+
+                  // Spacer
+                  Space s1 = new Space(this);
+                  s1.setMinimumHeight(25);
+                  root.addView(s1);
+
+                  // Guard Service Button (Soft Mint Pill)
                   permBtn = new Button(this);
-                  permBtn.setText("1. Enable Guard Service (Required Once)");
+                  permBtn.setText("✨ 1. Enable Magic Guard (Once) ✨");
+                  permBtn.setAllCaps(false);
+                  permBtn.setTextColor(Color.parseColor("#00695C"));
+                  permBtn.setTypeface(Typeface.DEFAULT_BOLD);
+                  permBtn.setBackground(makeRoundedCard("#E0F2F1", 50, "#80CBC4", 3));
                   permBtn.setOnClickListener(v -> {
-                      Toast.makeText(this, "Find 'IronLock' in Downloaded Apps and turn it ON", Toast.LENGTH_LONG).show();
+                      Toast.makeText(this, "Turn on CozyLock in Downloaded Apps! 🌸", Toast.LENGTH_LONG).show();
                       startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
                   });
                   root.addView(permBtn);
 
+                  Space s2 = new Space(this);
+                  s2.setMinimumHeight(20);
+                  root.addView(s2);
+
+                  // Input & Start Row
+                  LinearLayout controlsCard = new LinearLayout(this);
+                  controlsCard.setOrientation(LinearLayout.VERTICAL);
+                  controlsCard.setPadding(35, 30, 35, 30);
+                  controlsCard.setBackground(makeRoundedCard("#FFFFFF", 45, "#F8BBD0", 3));
+
                   timeInput = new EditText(this);
-                  timeInput.setHint("Enter Lock Duration (Minutes)");
-                  timeInput.setHintTextColor(Color.GRAY);
-                  timeInput.setTextColor(Color.WHITE);
+                  timeInput.setHint("⏰ How many minutes? (e.g. 30)");
+                  timeInput.setHintTextColor(Color.parseColor("#BCAAA4"));
+                  timeInput.setTextColor(Color.parseColor("#5D4037"));
+                  timeInput.setGravity(Gravity.CENTER);
+                  timeInput.setTextSize(16);
+                  timeInput.setBackground(makeRoundedCard("#FFF9FA", 35, "#F48FB1", 2));
+                  timeInput.setPadding(25, 25, 25, 25);
                   timeInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-                  root.addView(timeInput);
+                  controlsCard.addView(timeInput);
+
+                  Space s3 = new Space(this);
+                  s3.setMinimumHeight(20);
+                  controlsCard.addView(s3);
 
                   lockBtn = new Button(this);
-                  lockBtn.setText("2. START LOCKDOWN");
-                  lockBtn.setBackgroundColor(Color.parseColor("#D32F2F"));
+                  lockBtn.setText("🍓 Start Focus Session! 🍓");
+                  lockBtn.setAllCaps(false);
+                  lockBtn.setTextSize(17);
+                  lockBtn.setTypeface(Typeface.DEFAULT_BOLD);
+                  lockBtn.setBackground(makeRoundedCard("#FF6F91", 50, "#FF4081", 0));
                   lockBtn.setTextColor(Color.WHITE);
+                  lockBtn.setPadding(20, 25, 20, 25);
                   lockBtn.setOnClickListener(v -> startLockdown());
-                  root.addView(lockBtn);
+                  controlsCard.addView(lockBtn);
+
+                  root.addView(controlsCard);
 
                   TextView listHeader = new TextView(this);
-                  listHeader.setText("\nSelect Apps to Block:");
-                  listHeader.setTextColor(Color.LTGRAY);
+                  listHeader.setText("🐾 Apps to Put to Sleep:");
+                  listHeader.setTextColor(Color.parseColor("#880E4F"));
+                  listHeader.setTypeface(Typeface.DEFAULT_BOLD);
                   listHeader.setTextSize(16);
+                  listHeader.setPadding(15, 30, 10, 15);
                   root.addView(listHeader);
 
                   ScrollView scroll = new ScrollView(this);
@@ -219,18 +329,46 @@ jobs:
                       String pkg = app.activityInfo.packageName;
                       if (pkg.equals(getPackageName()) || pkg.equals("com.android.settings")) continue;
 
+                      LinearLayout itemCard = new LinearLayout(this);
+                      itemCard.setOrientation(LinearLayout.HORIZONTAL);
+                      itemCard.setGravity(Gravity.CENTER_VERTICAL);
+                      itemCard.setPadding(30, 20, 30, 20);
+                      itemCard.setBackground(makeRoundedCard("#FFFFFF", 35, "#FCE4EC", 3));
+
+                      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT
+                      );
+                      lp.setMargins(0, 0, 0, 16);
+                      itemCard.setLayoutParams(lp);
+
+                      ImageView iconView = new ImageView(this);
+                      iconView.setImageDrawable(app.loadIcon(pm));
+                      LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(95, 95);
+                      iconLp.setMargins(0, 0, 30, 0);
+                      iconView.setLayoutParams(iconLp);
+                      itemCard.addView(iconView);
+
                       String name = app.loadLabel(pm).toString();
                       CheckBox cb = new CheckBox(this);
-                      cb.setText(name);
-                      cb.setTextColor(Color.WHITE);
+                      cb.setText("  " + name);
+                      cb.setTextSize(16);
+                      cb.setTextColor(Color.parseColor("#4E342E"));
+                      cb.setTypeface(Typeface.SERIF, Typeface.NORMAL);
                       cb.setChecked(selectedApps.contains(pkg));
+                      cb.setLayoutParams(new LinearLayout.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT
+                      ));
                       cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
                           if (isChecked) selectedApps.add(pkg);
                           else selectedApps.remove(pkg);
                           prefs.edit().putStringSet("blockedApps", new HashSet<>(selectedApps)).apply();
                       });
                       checkBoxes.add(cb);
-                      appListLayout.addView(cb);
+                      itemCard.addView(cb);
+
+                      appListLayout.addView(itemCard);
                   }
 
                   scroll.addView(appListLayout);
@@ -243,7 +381,7 @@ jobs:
               private void startLockdown() {
                   String input = timeInput.getText().toString().trim();
                   if (input.isEmpty()) {
-                      Toast.makeText(this, "Enter minutes first!", Toast.LENGTH_SHORT).show();
+                      Toast.makeText(this, "Please type how many minutes first! 🌸", Toast.LENGTH_SHORT).show();
                       return;
                   }
                   long mins = Long.parseLong(input);
@@ -260,47 +398,34 @@ jobs:
 
                   if (remaining > 0) {
                       lockBtn.setEnabled(false);
+                      lockBtn.setText("🔒 Focus Mode Active! 🔒");
+                      lockBtn.setBackground(makeRoundedCard("#F48FB1", 50, null, 0));
                       permBtn.setEnabled(false);
                       timeInput.setEnabled(false);
                       for (CheckBox cb : checkBoxes) cb.setEnabled(false);
 
+                      final String[] faces = {
+                          "( •̀ ω •́ )✧ 🍓",
+                          "( ˘ ³˘)♥ 🌸",
+                          "(ง •̀_•́)ง ✨",
+                          "( ◕ ‿ ◕ ) 🐾"
+                      };
+
                       if (timer != null) timer.cancel();
                       timer = new CountDownTimer(remaining, 1000) {
+                          int tickCount = 0;
                           public void onTick(long millisUntilFinished) {
                               long m = (millisUntilFinished / 1000) / 60;
                               long s = (millisUntilFinished / 1000) % 60;
-                              statusText.setText(String.format("LOCKED: %02d:%02d", m, s));
+                              statusText.setText(String.format("🌸 %02d:%02d 🌸", m, s));
+                              subStatusText.setText("Shhh... distractions are sleeping! 💤");
+                              mascotText.setText(faces[(tickCount++ / 3) % faces.length]);
                           }
                           public void onFinish() {
-                              statusText.setText("UNLOCKED - SESSION COMPLETE");
+                              mascotText.setText("🎉 ( ≧∇≦ ) 🎉");
+                              statusText.setText("Yay! You Did It! 🌟");
+                              subStatusText.setText("Focus session complete! Proud of you! 💖");
                               lockBtn.setEnabled(true);
-                              permBtn.setEnabled(true);
-                              timeInput.setEnabled(true);
-                              for (CheckBox cb : checkBoxes) cb.setEnabled(true);
-                          }
-                      }.start();
-                  }
-              }
-          }
-          EOF
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.4'
-
-      - name: Build Debug APK
-        run: gradle assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: IronLock-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          
+                              lockBtn.setText("🍓 Start Focus Session! 🍓");
+                              lockBtn.setBackground(makeRoundedCard("#FF6F91", 50, "#FF4081", 0));
+                              permBtn.setEnabled(
