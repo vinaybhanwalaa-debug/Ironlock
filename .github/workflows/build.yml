@@ -1,0 +1,306 @@
+name: Build IronLock APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Complete Android Project
+        run: |
+          mkdir -p app/src/main/java/com/ironlock/blocker
+          mkdir -p app/src/main/res/xml
+
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "IronLock"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.0'
+          }
+          android {
+              namespace 'com.ironlock.blocker'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.ironlock.blocker"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <application
+                  android:label="IronLock"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".LockService"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/service_config" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/xml/service_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault"
+              android:canRetrieveWindowContent="false"
+              android:notificationTimeout="100" />
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/ironlock/blocker/LockService.java
+          package com.ironlock.blocker;
+
+          import android.accessibilityservice.AccessibilityService;
+          import android.content.SharedPreferences;
+          import android.view.accessibility.AccessibilityEvent;
+          import android.widget.Toast;
+          import java.util.HashSet;
+          import java.util.Set;
+
+          public class LockService extends AccessibilityService {
+              @Override
+              public void onAccessibilityEvent(AccessibilityEvent event) {
+                  if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                      if (event.getPackageName() == null) return;
+                      String pkg = event.getPackageName().toString();
+
+                      SharedPreferences prefs = getSharedPreferences("LockPrefs", MODE_PRIVATE);
+                      long endTime = prefs.getLong("endTime", 0);
+
+                      if (System.currentTimeMillis() < endTime) {
+                          Set<String> blocked = prefs.getStringSet("blockedApps", new HashSet<>());
+                          if (blocked.contains(pkg) || pkg.equals("com.android.settings")) {
+                              performGlobalAction(GLOBAL_ACTION_HOME);
+                              long minsLeft = ((endTime - System.currentTimeMillis()) / 60000) + 1;
+                              Toast.makeText(this, "IRONLOCK ACTIVE: " + minsLeft + " min remaining!", Toast.LENGTH_SHORT).show();
+                          }
+                      }
+                  }
+              }
+
+              @Override
+              public void onInterrupt() {}
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/ironlock/blocker/MainActivity.java
+          package com.ironlock.blocker;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.content.SharedPreferences;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.os.CountDownTimer;
+          import android.provider.Settings;
+          import android.text.InputType;
+          import android.view.Gravity;
+          import android.widget.*;
+          import java.util.*;
+
+          public class MainActivity extends Activity {
+              private SharedPreferences prefs;
+              private Set<String> selectedApps = new HashSet<>();
+              private Button lockBtn, permBtn;
+              private EditText timeInput;
+              private TextView statusText;
+              private List<CheckBox> checkBoxes = new ArrayList<>();
+              private CountDownTimer timer;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  prefs = getSharedPreferences("LockPrefs", MODE_PRIVATE);
+                  selectedApps = new HashSet<>(prefs.getStringSet("blockedApps", new HashSet<>()));
+
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setPadding(40, 60, 40, 40);
+                  root.setBackgroundColor(Color.parseColor("#121212"));
+
+                  statusText = new TextView(this);
+                  statusText.setText("IRONLOCK");
+                  statusText.setTextSize(26);
+                  statusText.setTextColor(Color.parseColor("#00E5FF"));
+                  statusText.setGravity(Gravity.CENTER);
+                  root.addView(statusText);
+
+                  permBtn = new Button(this);
+                  permBtn.setText("1. Enable Guard Service (Required Once)");
+                  permBtn.setOnClickListener(v -> {
+                      Toast.makeText(this, "Find 'IronLock' in Downloaded Apps and turn it ON", Toast.LENGTH_LONG).show();
+                      startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                  });
+                  root.addView(permBtn);
+
+                  timeInput = new EditText(this);
+                  timeInput.setHint("Enter Lock Duration (Minutes)");
+                  timeInput.setHintTextColor(Color.GRAY);
+                  timeInput.setTextColor(Color.WHITE);
+                  timeInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+                  root.addView(timeInput);
+
+                  lockBtn = new Button(this);
+                  lockBtn.setText("2. START LOCKDOWN");
+                  lockBtn.setBackgroundColor(Color.parseColor("#D32F2F"));
+                  lockBtn.setTextColor(Color.WHITE);
+                  lockBtn.setOnClickListener(v -> startLockdown());
+                  root.addView(lockBtn);
+
+                  TextView listHeader = new TextView(this);
+                  listHeader.setText("\nSelect Apps to Block:");
+                  listHeader.setTextColor(Color.LTGRAY);
+                  listHeader.setTextSize(16);
+                  root.addView(listHeader);
+
+                  ScrollView scroll = new ScrollView(this);
+                  LinearLayout appListLayout = new LinearLayout(this);
+                  appListLayout.setOrientation(LinearLayout.VERTICAL);
+
+                  PackageManager pm = getPackageManager();
+                  Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+                  mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
+                  Collections.sort(apps, new ResolveInfo.DisplayNameComparator(pm));
+
+                  for (ResolveInfo app : apps) {
+                      String pkg = app.activityInfo.packageName;
+                      if (pkg.equals(getPackageName()) || pkg.equals("com.android.settings")) continue;
+
+                      String name = app.loadLabel(pm).toString();
+                      CheckBox cb = new CheckBox(this);
+                      cb.setText(name);
+                      cb.setTextColor(Color.WHITE);
+                      cb.setChecked(selectedApps.contains(pkg));
+                      cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                          if (isChecked) selectedApps.add(pkg);
+                          else selectedApps.remove(pkg);
+                          prefs.edit().putStringSet("blockedApps", new HashSet<>(selectedApps)).apply();
+                      });
+                      checkBoxes.add(cb);
+                      appListLayout.addView(cb);
+                  }
+
+                  scroll.addView(appListLayout);
+                  root.addView(scroll);
+                  setContentView(root);
+
+                  checkLockState();
+              }
+
+              private void startLockdown() {
+                  String input = timeInput.getText().toString().trim();
+                  if (input.isEmpty()) {
+                      Toast.makeText(this, "Enter minutes first!", Toast.LENGTH_SHORT).show();
+                      return;
+                  }
+                  long mins = Long.parseLong(input);
+                  if (mins <= 0) return;
+
+                  long endTime = System.currentTimeMillis() + (mins * 60 * 1000);
+                  prefs.edit().putLong("endTime", endTime).apply();
+                  checkLockState();
+              }
+
+              private void checkLockState() {
+                  long endTime = prefs.getLong("endTime", 0);
+                  long remaining = endTime - System.currentTimeMillis();
+
+                  if (remaining > 0) {
+                      lockBtn.setEnabled(false);
+                      permBtn.setEnabled(false);
+                      timeInput.setEnabled(false);
+                      for (CheckBox cb : checkBoxes) cb.setEnabled(false);
+
+                      if (timer != null) timer.cancel();
+                      timer = new CountDownTimer(remaining, 1000) {
+                          public void onTick(long millisUntilFinished) {
+                              long m = (millisUntilFinished / 1000) / 60;
+                              long s = (millisUntilFinished / 1000) % 60;
+                              statusText.setText(String.format("LOCKED: %02d:%02d", m, s));
+                          }
+                          public void onFinish() {
+                              statusText.setText("UNLOCKED - SESSION COMPLETE");
+                              lockBtn.setEnabled(true);
+                              permBtn.setEnabled(true);
+                              timeInput.setEnabled(true);
+                              for (CheckBox cb : checkBoxes) cb.setEnabled(true);
+                          }
+                      }.start();
+                  }
+              }
+          }
+          EOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
+      - name: Build Debug APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: IronLock-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          
